@@ -1,0 +1,34 @@
+{
+  "name": "ask-chatgpt-skill",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Agent skill: ask ChatGPT (live web search + deep reasoning) through your real logged-in Chrome session. Works with Claude Code, opencode, and other agent-skill-compatible tools.",
+  "license": "MIT",
+  "bin": {
+    "ask-chatgpt": "./chatgpt.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "agent-skill",
+    "claude-code",
+    "opencode",
+    "chatgpt",
+    "web-search",
+    "deep-research",
+    "playwright",
+    "skills-sh"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JuliusJu572/ask-chatgpt-skill.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JuliusJu572/ask-chatgpt-skill/issues"
+  },
+  "homepage": "https://github.com/JuliusJu572/ask-chatgpt-skill#readme",
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
