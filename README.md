@@ -1,92 +1,201 @@
-# ask-chatgpt-skill
+# ask-chatgpt
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![skills.sh](https://img.shields.io/badge/skills.sh-ask--chatgpt-blue)](https://skills.sh/juliusju572/ask-chatgpt-skill/ask-chatgpt)
 
+Give your AI agent (Claude Code, opencode, …) the ability to **ask ChatGPT** —
+with ChatGPT's own **live web search and deep reasoning** — through your **real,
+logged-in Chrome session**. No API key needed; it reuses your existing ChatGPT
+login.
 
-## Getting started
+[English](#english) | [中文](#中文)
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+---
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## English
 
-## Add your files
+### What it does
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+Lets your agent reach for ChatGPT when it is stuck on a bug, needs current
+facts (latest versions, release notes, CVEs), needs to **research and
+synthesize a lot of web material**, or wants a **second opinion** from another
+strong model.
 
+```bash
+node chatgpt.mjs ask "Search the web: what's the latest stable Node.js LTS?"
 ```
-cd existing_repo
-git remote add origin http://git.aeroht.local/jurb/ask-chatgpt-skill.git
-git branch -M master
-git push -uf origin master
+
+### Install
+
+With the [skills.sh](https://skills.sh) CLI (works with Claude Code, opencode,
+Cursor, Codex, and many other agents):
+
+```bash
+npx skills add JuliusJu572/ask-chatgpt-skill
 ```
 
-## Integrate with your tools
+Or manually:
 
-- [ ] [Set up project integrations](http://git.aeroht.local/jurb/ask-chatgpt-skill/-/settings/integrations)
+```bash
+# Claude Code
+git clone https://github.com/JuliusJu572/ask-chatgpt-skill ~/.claude/skills/ask-chatgpt
+cd ~/.claude/skills/ask-chatgpt && npm install
 
-## Collaborate with your team
+# opencode
+git clone https://github.com/JuliusJu572/ask-chatgpt-skill ~/.config/opencode/skills/ask-chatgpt
+cd ~/.config/opencode/skills/ask-chatgpt && npm install
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+### One-time setup
 
-## Test and Deploy
+```bash
+node chatgpt.mjs sync     # copy ChatGPT login cookies from your everyday Chrome
+node chatgpt.mjs status   # -> "OK: logged in"
+```
 
-Use the built-in continuous integration in GitLab.
+`sync` copies the ChatGPT session cookies from `~/.config/google-chrome` into
+an isolated profile (`~/.ask-chatgpt/profile`). Your daily Chrome can stay
+open — files are copied, the directory is not shared, and cookies never leave
+your machine.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+Login in a non-default Chrome profile? `ASK_CHATGPT_CHROME_PROFILE="Profile 1"
+node chatgpt.mjs sync`. Or just `node chatgpt.mjs login` once, manually.
 
-***
+### Usage
 
-# Editing this README
+```bash
+S=~/.claude/skills/ask-chatgpt/chatgpt.mjs   # or your install path
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+# single question (stdout = clean answer)
+node $S ask "Search the web: current LTS version of Node.js?"
 
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+# multi-turn: named sessions keep full context across separate calls
+node $S ask "Debugging this Rust borrow error: ..." -s rustbug
+node $S ask "Your fix gave E0502 instead — why?" -s rustbug   # remembers
 
-## Name
-Choose a self-explaining name for your project.
+node $S sessions          # list named sessions
+node $S stop              # close the background browser
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+### Key behaviors
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+- **Deep research takes minutes.** "Thinking" / research answers routinely run
+  7–8 minutes. Default timeout is 15 min; a long pause is not a failure.
+- **Partial answers are impossible to mistake.** If the timeout is hit, stdout
+  starts with `[INCOMPLETE ANSWER — …]` and the exit code is **3**
+  (`0` = done, `1` = error). Don't treat a partial answer as final.
+- **Requests are minimal.** Completion is detected by watching the page
+  (free); each answer costs ~**one** backend request. A 429 rate-limit
+  triggers a backoff, never a reload.
+- **Serialize asks.** One shared login / one browser tab: run one question at
+  a time, even across agents.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+### Requirements
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+- Linux with a desktop session (headless is blocked by Cloudflare)
+- Google Chrome installed and logged in to ChatGPT
+- Node.js ≥ 18
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### Security
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+- Drives your **real ChatGPT session** — treat it like your own.
+- Cookies stay local (`~/.ask-chatgpt/`); nothing is uploaded anywhere.
+- Don't paste secrets (API keys, tokens, credentials) into prompts.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+---
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+## 中文
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### 这是什么
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+让你的 AI agent（Claude Code、opencode 等）通过你**真实登录的 Chrome
+浏览器**去问 ChatGPT——自带 ChatGPT 的**联网搜索和深度推理**能力。**无需 API
+key**，直接复用你已有的 ChatGPT 登录态。
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+适用场景：agent 被 bug 卡住、需要最新信息（版本号、release notes、CVE）、
+需要**联网调研并整理大量资料**、或想要另一个强模型的**第二意见**。
 
-## License
-For open source projects, say how it is licensed.
+```bash
+node chatgpt.mjs ask "Search the web: what's the latest stable Node.js LTS?"
+```
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+### 安装
+
+使用 [skills.sh](https://skills.sh) CLI（支持 Claude Code、opencode、Cursor、
+Codex 等 20+ agent）：
+
+```bash
+npx skills add JuliusJu572/ask-chatgpt-skill
+```
+
+或手动安装：
+
+```bash
+# Claude Code
+git clone https://github.com/JuliusJu572/ask-chatgpt-skill ~/.claude/skills/ask-chatgpt
+cd ~/.claude/skills/ask-chatgpt && npm install
+
+# opencode
+git clone https://github.com/JuliusJu572/ask-chatgpt-skill ~/.config/opencode/skills/ask-chatgpt
+cd ~/.config/opencode/skills/ask-chatgpt && npm install
+```
+
+### 一次性设置
+
+```bash
+node chatgpt.mjs sync     # 从你日常使用的 Chrome 复制 ChatGPT 登录 cookie
+node chatgpt.mjs status   # -> "OK: logged in"
+```
+
+`sync` 会把 `~/.config/google-chrome` 里的 ChatGPT 会话 cookie 复制到一个
+隔离的 profile（`~/.ask-chatgpt/profile`）。你日常的 Chrome 可以照常开着——
+只是复制文件，不共享目录，cookie 也不会离开你的机器。
+
+登录态在非默认 Chrome profile 里？用 `ASK_CHATGPT_CHROME_PROFILE="Profile 1"
+node chatgpt.mjs sync`；或者直接手动登录一次：`node chatgpt.mjs login`。
+
+### 使用
+
+```bash
+S=~/.claude/skills/ask-chatgpt/chatgpt.mjs   # 换成你的安装路径
+
+# 单次提问（stdout = 干净的答案文本）
+node $S ask "Search the web: current LTS version of Node.js?"
+
+# 多轮对话：命名会话在多次调用之间保留完整上下文
+node $S ask "Debugging this Rust borrow error: ..." -s rustbug
+node $S ask "Your fix gave E0502 instead — why?" -s rustbug   # 记得上文
+
+node $S sessions          # 列出命名会话
+node $S stop              # 关闭后台浏览器
+```
+
+### 关键行为
+
+- **深度研究需要几分钟。**"Thinking"/研究类回答通常要 7–8 分钟，默认超时
+  15 分钟；长时间停顿不代表失败。
+- **不完整答案绝不会被误认。** 超时未结束时，stdout 会以
+  `[INCOMPLETE ANSWER — …]` 开头，且退出码为 **3**（`0`=完成，`1`=出错）。
+  不要把部分答案当成最终答案。
+- **请求量极低。** 通过观察页面（零成本）判断回答是否结束，每个回答只花
+  **约 1 次**后端请求；遇到 429 限流会自动退避，绝不刷新页面。
+- **请串行提问。** 同一个登录态 / 同一个浏览器标签页：一次只跑一个问题，
+  多个 agent 之间也一样。
+
+### 环境要求
+
+- 带桌面会话的 Linux（headless 会被 Cloudflare 拦截）
+- 已安装 Google Chrome 并登录了 ChatGPT
+- Node.js ≥ 18
+
+### 安全说明
+
+- 它驱动的是你**真实的 ChatGPT 会话**——请像对待自己的会话一样对待它。
+- cookie 只保存在本地（`~/.ask-chatgpt/`），不会上传到任何地方。
+- 不要把密钥（API key、token、凭据）粘贴到提问内容里。
+
+---
+
+## License / 许可证
+
+[MIT](LICENSE)
