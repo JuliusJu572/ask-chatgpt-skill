@@ -232,6 +232,7 @@ function parseArgs(argv) {
     agentOnly: false,
     session: null,
     dom: false,
+    images: [],
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -286,6 +287,10 @@ function parseArgs(argv) {
       case '--dom':
         opts.dom = true;
         break;
+      case '--image':
+      case '-i':
+        opts.images.push(argv[++i]);
+        break;
       case '-h':
       case '--help':
         opts.help = true;
@@ -338,6 +343,8 @@ Common flags:
   --timeout <ms>     Response timeout (default 300000).
   --model <name>     Switch model in the UI (e.g. "Thinking", "Instant").
   --save <path>      Also write the answer text to a file.
+  -i, --image <p>     Attach an image (path). Repeatable for several images.
+                      ChatGPT sees them and answers about them.
   --html             Print raw answer HTML to stderr.
   --json             (list) JSON output.   --limit <n>  (list) how many (default 20).
   --headless         Run headless (usually blocked by Cloudflare — avoid).
@@ -648,7 +655,80 @@ async function startNewChat(page) {
   await page.waitForTimeout(800);
 }
 
-async function submitPrompt(page, prompt) {
+/**
+ * Attach one or more image files to the composer.
+ *
+ * ChatGPT's image upload accepts files through a hidden <input type="file">.
+ * Playwright's setInputFiles is the most reliable way to drive it — it bypasses
+ * the OS file dialog entirely — so we find the input and set the resolved paths.
+ * We try, in order: the composer's own file input; any generic hidden file
+ * input that accepts images; plus the "paperclip" attach button as a trigger.
+ */
+async function uploadImages(page, images) {
+  const paths = [];
+  for (const img of images) {
+    const p = path.resolve(img);
+    if (!fs.existsSync(p)) throw new Error('image not found: ' + img);
+    paths.push(p);
+  }
+  // Candidate file inputs. ChatGPT renders several over its lifecycle; try the
+  // most specific first, then a broad fallback. visibility:hidden (not display:none)
+  // is how ChatGPT keeps these usable-by-script but invisible.
+  const inputSelectors = [
+    'composer input[type="file"]',
+    'div[class*="composer"] input[type="file"]',
+    '#composition-helli-input', // legacy attach input id
+    'input[type="file"][accept*="image"]',
+    'input[type="file"]',
+  ];
+  async function trySetInput() {
+    for (const sel of inputSelectors) {
+      const loc = page.locator(sel).last();
+      const count = await loc.count().catch(() => 0);
+      if (!count) continue;
+      try {
+        await loc.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+      } catch { /* ignore */ }
+      const ok = await loc
+        .evaluate((el) => el instanceof HTMLInputElement && el.type === 'file', undefined)
+        .catch(() => false);
+      if (!ok) continue;
+      try {
+        await loc.setInputFiles(paths);
+        return true;
+      } catch (e) {
+        log('image upload via %s failed: %s', sel, e.message);
+      }
+    }
+    return false;
+  }
+
+  let attached = await trySetInput();
+  if (!attached) {
+    // Trigger the attach (paperclip) button to reveal a file input.
+    for (const sel of ['button[data-testid*="attach"], button[aria-label*="attach" i], button[aria-label*="upload" i], button[aria-label*="attachment" i]']) {
+      const btn = page.locator(sel).first();
+      if (!(await btn.isVisible().catch(() => false))) continue;
+      await btn.click({ force: true }).catch(() => {});
+      await page.waitForTimeout(600);
+      attached = await trySetInput();
+      if (attached) break;
+    }
+  }
+  if (!attached) throw new Error('could not find a ChatGPT file-upload input to set images');
+
+  // Wait for the upload thumbnails / "image attached" state to render so ChatGPT
+  // actually sends them with the prompt. A generous wait: large images upload slowly.
+  await page.waitForTimeout(800);
+  try {
+    await page
+      .locator('img[alt*="uploaded image" i], div[data-testid*="upload"], img[src^="data:image"], img[src^="blob:"], img[alt*="上传" i]')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 });
+  } catch { /* best-effort; ChatGPT accepts the files even if the thumb is not found */ }
+}
+
+async function submitPrompt(page, prompt, images) {
   await dismissOverlays(page);
 
   // Find the first VISIBLE composer (ChatGPT has a hidden fallback textarea).
@@ -690,6 +770,14 @@ async function submitPrompt(page, prompt) {
         el.dispatchEvent(new Event('input', { bubbles: true }));
       }, prompt);
     }
+  }
+
+  // Image upload happens AFTER the text so the prompt is the turn's text and the
+  // images are attachments. ChatGPT attaches to the draft currently in focus.
+  if (Array.isArray(images) && images.length) {
+    log('uploading %d image(s) ...', images.length);
+    await uploadImages(page, images);
+    await page.waitForTimeout(400);
   }
 
   await page.waitForTimeout(300);
@@ -1987,6 +2075,7 @@ async function cmdAsk(prompt, opts) {
       timeout: opts.timeout,
       html: opts.html,
       dom: opts.dom,
+      images: opts.images && opts.images.length ? opts.images : undefined,
     },
     budget,
   );
@@ -2066,6 +2155,7 @@ async function cmdChat(opts) {
           forceNew: opts.newChat === true && first,
           rename: !opts.noRename,
           timeout: opts.timeout,
+          images: opts.images && opts.images.length ? opts.images : undefined,
         },
         (opts.timeout || DEFAULT_TIMEOUT) + 180000,
       );
@@ -2367,7 +2457,7 @@ async function doAsk(pageArg, state, p, queuedMs = 0) {
   const baseline = { ids: (apiBaseline && apiBaseline.ids) || [], maxTime: (apiBaseline && apiBaseline.maxTime) || 0 };
   const domBaseline = await getBaseline(page);
 
-  await submitPrompt(page, prompt);
+      await submitPrompt(page, prompt, p.images);
   // A new chat's URL becomes /c/<id> on its own schedule — sometimes only after
   // the answer has landed. Blocking on it cost 30s and, when it timed out, threw
   // away the API path for the whole turn (that is why a one-word answer took
@@ -2381,7 +2471,7 @@ async function doAsk(pageArg, state, p, queuedMs = 0) {
       baseline,
       timeoutMs,
       prompt,
-      resubmit: () => submitPrompt(page, prompt),
+      resubmit: () => submitPrompt(page, prompt, p.images),
       getPage: state.ensurePage,
     });
     if (res.apiBlocked) res = await captureResponseDom(page, timeoutMs, domBaseline);
@@ -2397,7 +2487,7 @@ async function doAsk(pageArg, state, p, queuedMs = 0) {
     if (banner) {
       log('ChatGPT reported an error ("' + banner + '") — retrying once ...');
       await reloadPage(page);
-      await submitPrompt(page, prompt);
+  await submitPrompt(page, prompt, p.images);
       const retryId = await resolveConversationId(page, convId0, 30000);
       if (retryId) {
         const again = await waitForAnswer(page, {
