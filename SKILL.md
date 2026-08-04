@@ -1,6 +1,6 @@
 ---
 name: ask-chatgpt
-description: Ask ChatGPT (live web search + deep reasoning) from the terminal via a real logged-in Chrome session. Use it when (1) you hit a BLOCKER while developing — a stubborn bug, build/toolchain error, or confusing behavior you can't resolve on your own; (2) you need CURRENT facts beyond your knowledge — latest library/framework/API versions, release notes, CVEs, breaking changes, post-cutoff events; (3) you need ONLINE RESEARCH — gathering, cross-referencing and synthesizing large amounts of up-to-date material from the web into one coherent answer (survey a topic, compare options across sources, summarize recent developments, organize a lot of material); or (4) you want a SECOND OPINION / cross-check from another strong model while coding or writing docs. Reach for it whenever real-time web knowledge or a long-form researched answer would unblock you. Triggers include "ask chatgpt", "search the web", "look this up online", "research this", "do a web search", "latest version of", "what's new in", "release notes for", "I'm stuck", "联网搜索", "联网调研", "问chatgpt", "查一下最新的", "上网查", "查资料", "整理资料", "调研一下", "卡住了", "cross-check with another model", "get a second opinion". Supports multi-turn follow-ups that keep full conversation context across separate calls via named sessions (`-s <name>`), so you can iterate on a problem, ask "why did that fail?", or refine an answer. NOTE — one shared ChatGPT login, so never run two asks in parallel; serialize them (see Concurrency).
+description: Ask ChatGPT (live web search + deep reasoning) from the terminal via a real logged-in Chrome session. Use it when (1) you hit a BLOCKER while developing — a stubborn bug, build/toolchain error, or confusing behavior you can't resolve on your own; (2) you need CURRENT facts beyond your knowledge — latest library/framework/API versions, release notes, CVEs, breaking changes, post-cutoff events; (3) you need ONLINE RESEARCH — gathering, cross-referencing and synthesizing large amounts of up-to-date material from the web into one coherent answer (survey a topic, compare options across sources, summarize recent developments, organize a lot of material); (4) you want a SECOND OPINION / cross-check from another strong model while coding or writing docs; or (5) you need to ANALYZE / UNDERSTAND AN IMAGE — a screenshot, a chart/diagram, an error dialog, a UI mockup, a photo; attach it with `--image <path>` and ChatGPT will read it (text extraction / OCR, chart reading, layout critique, "what's on screen here?"). Reach for it whenever real-time web knowledge, a long-form researched answer, or an image-recognizing second model would unblock you. Triggers include "ask chatgpt", "search the web", "look this up online", "research this", "do a web search", "latest version of", "what's new in", "release notes for", "I'm stuck", "联网搜索", "联网调研", "问chatgpt", "查一下最新的", "上网查", "查资料", "整理资料", "调研一下", "卡住了", "看这张图", "识别图片", "图片分析", "这张截图", "cross-check with another model", "get a second opinion", "analyze this image". Supports multi-turn follow-ups that keep full conversation context across separate calls via named sessions (`-s <name>`), so you can iterate on a problem, ask "why did that fail?", or refine an answer. NOTE — one shared ChatGPT login, so never run two asks in parallel; serialize them (see Concurrency).
 ---
 
 # ask-chatgpt
@@ -8,7 +8,8 @@ description: Ask ChatGPT (live web search + deep reasoning) from the terminal vi
 Ask ChatGPT through the user's **real logged-in Chrome session**; it does its own
 web search + reasoning and returns clean text on stdout. Use it for **development
 blockers**, **current facts beyond your knowledge**, **online research that
-synthesizes a lot of web material**, or a **second model's opinion**.
+synthesizes a lot of web material**, **a second model's opinion**, or
+**analyzing an image** (chart, screenshot, UI, photo — attach with `--image`).
 
 It's a self-contained script (`chatgpt.mjs`) driving system Chrome with copied
 login cookies — normally **no manual login**. In the commands below, `$S` is the
@@ -49,6 +50,13 @@ node $S ask "Search the web: latest stable Node.js LTS version right now?"
 - Be specific, and ask it to **search explicitly**: `ask "Search the web: ..."`.
 - Paste context (error + snippet + versions) for code questions.
 - You can also pipe a prompt via stdin.
+- **Analyze an image**: attach one or more files with `--image <path>` (repeatable).
+  ChatGPT reads them — OCR text from a screenshot, values off a chart, critiquing a
+  UI, identifying what's in a photo:
+  ```bash
+  node $S ask "这张截图里的报错是什么意思？怎么修？" -i error.png
+  node $S ask "把这张柱状图每个类别的数值列出来" -i chart.png --new
+  ```
 
 ### Incomplete answers — don't mistake them for final
 
@@ -84,6 +92,7 @@ background daemon keeps one logged-in Chrome warm; `chatgpt.mjs stop` closes it.
 | `--timeout <ms>` | Timeout, default `900000` (15 min). Raise for very long research. |
 | `--model <name>` | E.g. `--model "Thinking"` / `"Instant"`. |
 | `--save <path>` | Also write the answer to a file. |
+| `-i`, `--image <path>` | Attach an image (repeatable). ChatGPT reads it — OCR, charts, screenshots, UI, photos. |
 
 **Avoid `--headless`** — ChatGPT's Cloudflare protection usually blocks it.
 

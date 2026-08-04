@@ -6,7 +6,7 @@
 Give your AI agent (Claude Code, opencode, …) the ability to **ask ChatGPT** —
 with ChatGPT's own **live web search and deep reasoning** — through your **real,
 logged-in Chrome session**. No API key needed; it reuses your existing ChatGPT
-login.
+login. It can also **analyze images** you attach (screenshots, charts, UI, photos).
 
 [English](#english) | [中文](#中文)
 
@@ -18,11 +18,13 @@ login.
 
 Lets your agent reach for ChatGPT when it is stuck on a bug, needs current
 facts (latest versions, release notes, CVEs), needs to **research and
-synthesize a lot of web material**, or wants a **second opinion** from another
-strong model.
+synthesize a lot of web material**, wants a **second opinion** from another
+strong model, or needs to **understand an image** (a screenshot, chart, UI
+mockup, photo — attach it with `--image`).
 
 ```bash
 node chatgpt.mjs ask "Search the web: what's the latest stable Node.js LTS?"
+node chatgpt.mjs ask "What error is shown in this screenshot and how do I fix it?" -i shot.png
 ```
 
 ### Install
@@ -110,13 +112,16 @@ node $S stop              # close the background browser
 
 让你的 AI agent（Claude Code、opencode 等）通过你**真实登录的 Chrome
 浏览器**去问 ChatGPT——自带 ChatGPT 的**联网搜索和深度推理**能力。**无需 API
-key**，直接复用你已有的 ChatGPT 登录态。
+key**，直接复用你已有的 ChatGPT 登录态。还可以**让 ChatGPT 看图分析**（截图、
+图表、UI、照片等，用 `--image` 附上）。
 
 适用场景：agent 被 bug 卡住、需要最新信息（版本号、release notes、CVE）、
-需要**联网调研并整理大量资料**、或想要另一个强模型的**第二意见**。
+需要**联网调研并整理大量资料**、想要另一个强模型的**第二意见**，或需要**识别/
+分析图片**。
 
 ```bash
 node chatgpt.mjs ask "Search the web: what's the latest stable Node.js LTS?"
+node chatgpt.mjs ask "这张截图里的报错是什么意思？怎么修？" -i error.png
 ```
 
 ### 安装
