@@ -5,105 +5,91 @@ description: Ask ChatGPT (live web search + deep reasoning) from the terminal vi
 
 # ask-chatgpt
 
-Ask ChatGPT through the user's **real logged-in Chrome session**; it does its own
-web search + reasoning and returns clean text on stdout. Use it for **development
-blockers**, **current facts beyond your knowledge**, **online research that
-synthesizes a lot of web material**, **a second model's opinion**, or
-**analyzing an image** (chart, screenshot, UI, photo — attach with `--image`).
+Ask the **ChatGPT web app** through the user's own logged-in browser session. ChatGPT does
+its own web search / reasoning / image reading; the clean answer comes back on stdout.
 
-It's a self-contained script (`chatgpt.mjs`) driving system Chrome with copied
-login cookies — normally **no manual login**. In the commands below, `$S` is the
-path to `chatgpt.mjs` inside **this skill's install directory** (e.g.
-`~/.claude/skills/ask-chatgpt/chatgpt.mjs` for Claude Code or
-`~/.config/opencode/skills/ask-chatgpt/chatgpt.mjs` for opencode).
+`$S` below = `chatgpt.mjs` in this skill's directory (e.g. `~/.claude/skills/ask-chatgpt/chatgpt.mjs`).
 
-## One-time setup
+## How it works (v2)
 
-```bash
-cd <this skill's install directory>   # e.g. ~/.claude/skills/ask-chatgpt
-npm install                            # playwright dependency
-node chatgpt.mjs sync                  # copy ChatGPT login cookies from your real Chrome
-node chatgpt.mjs status                # -> "OK: logged in"
-```
+A dedicated Chromium/Chrome runs in the background (profile `~/.ask-chatgpt/profile`) and
+stays logged in. Each call attaches to it, types the prompt, presses Enter and **confirms the
+send by seeing ChatGPT's network request**. Completion is ChatGPT's own WebSocket
+`conversation-turn-complete` event; the answer is then read once from
+`/backend-api/conversation/<id>`. No CSS-class scraping, so UI language/layout changes
+don't break it. Usually exactly **1 API read per answer**.
 
-If `sync` can't log you in, the login is in another Chrome profile or expired:
-`ASK_CHATGPT_CHROME_PROFILE="Profile 1" node chatgpt.mjs sync`, or `node chatgpt.mjs login` (manual, once).
-
-## Concurrency — serialize asks (important)
-
-One shared ChatGPT login / one background browser. **Never run two asks in
-parallel** — turns interleave, a follow-up can abort a previous answer still
-generating, and "too many requests" becomes likely. Wait for each answer to
-finish (clean stdout, exit `0`) before starting the next, even from another
-agent or terminal.
-
-## Ask a question
+## Ask
 
 ```bash
-S=<skill-dir>/chatgpt.mjs
-node $S ask "Search the web: latest stable Node.js LTS version right now?"
+node $S ask "Search the web: latest stable Node.js LTS version?"
+node $S ask "这张截图里的报错是什么意思？" -i error.png        # image / file (repeatable -i)
+printf '%s' "$LONG_PROMPT" | node $S ask                        # prompt via stdin (multi-line OK)
 ```
 
-- **stdout** = the clean answer; **stderr** = progress/diagnostics.
-- Simple answers take ~15–40s. **Deep research / "Thinking" runs 7–8 minutes** —
-  the default timeout is 15 min; be patient, a long pause is not a failure.
-- Be specific, and ask it to **search explicitly**: `ask "Search the web: ..."`.
-- Paste context (error + snippet + versions) for code questions.
-- You can also pipe a prompt via stdin.
-- **Analyze an image**: attach one or more files with `--image <path>` (repeatable).
-  ChatGPT reads them — OCR text from a screenshot, values off a chart, critiquing a
-  UI, identifying what's in a photo:
-  ```bash
-  node $S ask "这张截图里的报错是什么意思？怎么修？" -i error.png
-  node $S ask "把这张柱状图每个类别的数值列出来" -i chart.png --new
-  ```
+- **stdout** = answer only. **stderr** = progress (`sent ...`, `done in Ns via api | conversation_id ...`).
+- Exit **0** = complete. **1** = error (message on stderr). **3** = INCOMPLETE (see below).
+- Simple answers: 15–40 s. Heavy models (e.g. "... Max", deep research, agent mode that
+  runs tools) can take **10+ minutes** — a long silence is not a failure; stderr prints
+  `ChatGPT is working ... Ns` every 30 s.
+- Be specific; say "Search the web:" when you need fresh facts; paste errors + versions.
 
-### Incomplete answers — don't mistake them for final
+### Long questions vs. the 10-minute Bash limit
 
-If the timeout is hit, the answer is **partial** and clearly marked:
-
-- stdout begins with `[INCOMPLETE ANSWER — ...]`, and the process exits with
-  code **3** (≠ `1`, which means a real error).
-- **Don't treat it as final, and don't ask a follow-up yet** (that would abort
-  the still-running turn). Re-run with a larger `--timeout`, or re-ask.
-
-## Multi-turn conversations
-
-A **named session** (`-s <name>`) maps to a ChatGPT conversation on disk, so
-separate calls keep full context — use pronouns, "that", "it", and refine
-iteratively:
+The default `--timeout` is 15 min, longer than a foreground Bash call may last. For anything
+that may run long, either run the ask with `run_in_background: true`, or cap it and collect later:
 
 ```bash
-node $S ask "Debugging this Rust borrow error: ..." -s rustbug
-node $S ask "Your fix gave E0502 — why?" -s rustbug      # remembers context
-node $S sessions                                          # list sessions
-node $S ask "fresh start" -s rustbug --new               # rebind the name
+node $S ask "<deep research prompt>" -s topic --timeout 540000   # exit 3 if not done in 9 min
+node $S fetch -s topic --wait --timeout 540000                   # collect the finished answer
 ```
 
-Or target an id directly with `--conv <id>` (printed on every answer). A
-background daemon keeps one logged-in Chrome warm; `chatgpt.mjs stop` closes it.
+`fetch` sends nothing — it only reads the conversation, so it is also the recovery path after
+an interrupted/killed ask (ChatGPT keeps generating server-side).
 
-### Common flags
+### Incomplete answers (exit 3)
 
-| Flag | Meaning |
-|------|---------|
-| `-s`, `--session <name>` | Named multi-turn session. |
-| `--conv <id>` / `--new` | Continue an id / force a fresh chat. |
-| `--timeout <ms>` | Timeout, default `900000` (15 min). Raise for very long research. |
-| `--model <name>` | E.g. `--model "Thinking"` / `"Instant"`. |
-| `--save <path>` | Also write the answer to a file. |
-| `-i`, `--image <path>` | Attach an image (repeatable). ChatGPT reads it — OCR, charts, screenshots, UI, photos. |
+stdout starts with `[INCOMPLETE ANSWER — ...]`. Don't treat it as final and **don't send a
+follow-up yet** (it would interrupt the running turn). Run `fetch ... --wait` instead.
 
-**Avoid `--headless`** — ChatGPT's Cloudflare protection usually blocks it.
+## Multi-turn
+
+```bash
+node $S ask "Debugging this Rust borrow error: ..." -s rustbug   # creates / continues "rustbug"
+node $S ask "Your fix gave E0502 — why?" -s rustbug               # same conversation, full context
+node $S ask "fresh start" -s rustbug --new                        # rebind the name to a new chat
+node $S sessions            # list    |   node $S sessions --forget rustbug
+```
+
+Also: `--conv <id>` continues a specific conversation; `--no-new` continues the last one.
+Without `-s/--conv/--no-new` every ask is a **new chat**.
+
+## Concurrency
+
+One ChatGPT login → asks are **serialized automatically** with a lock: a second caller
+prints `waiting for another ask to finish ...` and runs afterwards. Still, prefer running
+asks one after another — a long research run blocks everyone behind it.
+
+## Other commands / flags
+
+| | |
+|---|---|
+| `status` / `start` / `stop` | login state + browser / start it / close it |
+| `models` | list the models in ChatGPT's picker; then `ask ... -m "<name>"` |
+| `list [--limit n] [--agent-only]` | recent conversations |
+| `--save <path>` | also write the answer to a file |
+| `--title <t>` / `--no-rename` | title of a new chat (default `[AGENT] <prompt>`) |
+| `--headless` | avoid — Cloudflare usually blocks it |
 
 ## Troubleshooting
 
-- **`NOT_LOGGED_IN`** → `node chatgpt.mjs sync` (or `login`).
-- **`[INCOMPLETE ANSWER]` / exit 3** → partial; raise `--timeout` or re-ask.
-- **"too many requests"** → ChatGPT is throttling; wait a few minutes and retry.
-- **Daemon acting up** → `chatgpt.mjs stop` then retry. Logs: `~/.ask-chatgpt/daemon.log`.
+- `NOT_LOGGED_IN` → `node $S login` (log in once in the window), or `node $S sync` to copy
+  cookies from the user's Chrome (only works with the same browser family).
+- `too many requests (429)` → ChatGPT throttling; wait a few minutes.
+- Anything odd → `node $S stop` and retry (the next ask starts a fresh browser).
+  Screenshots of failures: `~/.ask-chatgpt/debug/`. Browser log: `~/.ask-chatgpt/browser.log`.
 
 ## Safety
 
-- This drives the user's **real ChatGPT session** — treat it like their own.
-- **Don't paste secrets** (API keys, tokens, credentials) into prompts.
+This is the user's real ChatGPT account — treat it as theirs. Never paste secrets
+(API keys, tokens, credentials) into prompts.
